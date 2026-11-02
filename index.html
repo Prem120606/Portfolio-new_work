@@ -8,8 +8,17 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Sora:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+<script>
+/* LITE mode = phones, touch devices, reduced-motion: no blur, no endless animations, simple fades.
+   Laptops keep the full effects. Set before first paint so there is no flash. */
+(function(){
+  var lite = window.matchMedia('(max-width: 900px)').matches ||
+             window.matchMedia('(pointer: coarse)').matches ||
+             window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  window.__LITE = lite;
+  if(lite){ document.documentElement.classList.add('lite'); }
+})();
+</script>
 <style>
 :root{
   --navy-deep:#03050a;
@@ -268,6 +277,28 @@ h1,h2,h3,.mono{font-family:'Orbitron',sans-serif;}
   .progress-track{width:96px;}
   .progress-label{font-size:.56rem;}
 }
+
+.wing{overscroll-behavior:contain;touch-action:pan-y;}
+.proj-link{display:inline-block;margin-top:.15rem;font-size:.62rem;letter-spacing:.06em;color:var(--cyan);border:1px solid var(--glass-border);padding:.28rem .7rem;border-radius:999px;background:rgba(130,200,229,.06);}
+.proj-link:hover{background:rgba(130,200,229,.16);}
+
+/* ===== LITE MODE (phones): no blur, no endless animations, simple fade in / out ===== */
+@keyframes fadeIn{from{opacity:0;}to{opacity:1;}}
+.lite *,.lite *::before,.lite *::after{animation:none !important;backdrop-filter:none !important;-webkit-backdrop-filter:none !important;}
+.lite .loader-ring{animation:spin 1s linear infinite !important;}
+.lite .scanlines,.lite .vignette,.lite .bg-grid,.lite .cursor-orb,.lite .cursor-trail,
+.lite .core-outer-ring,.lite .floating-object,.lite #burst,.lite #bg-canvas{display:none !important;}
+.lite body{cursor:auto;transition:none;}
+.lite .wing,.lite .ai-panel,.lite .ai-toggle,.lite .status-pill,.lite .core-disc,.lite .orb-node,.lite .terminal-shell,.lite .dock-btn{box-shadow:none;}
+.lite .wing{background:rgba(5,10,20,.95);transform:translateY(-50%);opacity:0;visibility:hidden;transition:opacity .3s ease, visibility 0s linear .3s;}
+.lite .wing.open{transform:translateY(-50%);opacity:1;visibility:visible;transition:opacity .3s ease, visibility 0s;}
+.lite .ai-panel{transform:none;transition:opacity .2s ease;}
+.lite .node-ring{transition:none;}
+.lite .orb-node{transition:background .25s ease, border-color .25s ease;}
+.lite .core-title.swap{animation:fadeIn .35s ease !important;}
+@media (max-width:900px){
+  .lite .wing,.lite .wing.open{transform:none;}
+}
 </style>
 </head>
 <body>
@@ -368,7 +399,14 @@ h1,h2,h3,.mono{font-family:'Orbitron',sans-serif;}
 (function(){
   "use strict";
   var reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  var isMobile = window.matchMedia('(max-width: 900px)').matches || window.matchMedia('(pointer: coarse)').matches;
+  var isMobile = !!window.__LITE;           // lite mode: phones, touch, reduced motion
+  var ROT_MS = isMobile ? 0 : 1050;          // ring rotation time (phones: no rotation animation)
+  var CLOSE_MS = isMobile ? 300 : 380;       // panel fade-out time
+  function loadScript(src, cb){
+    var el = document.createElement('script'); el.src = src; el.async = true;
+    if(cb){ el.onload = cb; }
+    document.head.appendChild(el);
+  }
 
   /* ---------------- loader + boot sequence ---------------- */
   var bootLines = document.getElementById('boot-lines');
@@ -384,11 +422,11 @@ h1,h2,h3,.mono{font-family:'Orbitron',sans-serif;}
     setTimeout(function(){
       document.getElementById('loader').classList.add('hide');
       playBurst();
-    }, 900);
+    }, isMobile ? 350 : 900);
   });
 
   /* ---------------- three.js particle field ---------------- */
-  (function initParticles(){
+  function initParticles(){
     var canvas = document.getElementById('bg-canvas');
     if(!canvas || typeof THREE === 'undefined' || reduceMotion || isMobile){ return; }
     var renderer;
@@ -432,7 +470,12 @@ h1,h2,h3,.mono{font-family:'Orbitron',sans-serif;}
       camera.aspect = window.innerWidth/window.innerHeight; camera.updateProjectionMatrix();
       renderer.setSize(window.innerWidth, window.innerHeight);
     });
-  })();
+  }
+  /* heavy libraries (three.js ~600 KB, GSAP) are downloaded on laptops only */
+  if(!isMobile){
+    loadScript('https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js', initParticles);
+    loadScript('https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js');
+  }
 
   /* ---------------- live clock ---------------- */
   var clockEl = document.getElementById('hud-clock');
@@ -443,14 +486,14 @@ h1,h2,h3,.mono{font-family:'Orbitron',sans-serif;}
     var hh = String(d.getHours()).padStart(2,'0');
     var mm = String(d.getMinutes()).padStart(2,'0');
     var ss = String(d.getSeconds()).padStart(2,'0');
-    clockEl.innerHTML = '<b>'+hh+':'+mm+':'+ss+'</b> · Salem, IN';
+    clockEl.innerHTML = '<b>'+hh+':'+mm+(isMobile ? '' : ':'+ss)+'</b> · Salem, IN';
   }
-  tick(); setInterval(tick, 1000);
+  tick(); setInterval(function(){ if(!document.hidden){ tick(); } }, isMobile ? 20000 : 1000);
 
   /* ---------------- role typewriter ---------------- */
   var roles = ['Python Developer','AI Enthusiast','Web Developer','Flutter Developer'];
   var roleEl = document.getElementById('role-text');
-  if(!reduceMotion){
+  if(!reduceMotion && !isMobile){
     var ri = 0, ci = 0, deleting = false;
     function typeLoop(){
       var word = roles[ri];
@@ -525,7 +568,7 @@ h1,h2,h3,.mono{font-family:'Orbitron',sans-serif;}
       hint.classList.add('show');
       setTimeout(function(){ hint.classList.remove('show'); }, 3200);
     }
-    if(window.gsap && !reduceMotion){
+    if(window.gsap && !reduceMotion && !isMobile){
       var tl = gsap.timeline({onComplete:finish});
       tl.to(flash, {opacity:.85, duration:.25, ease:'power2.out'}, 0);
       rings.forEach(function(r, i){
@@ -544,11 +587,12 @@ h1,h2,h3,.mono{font-family:'Orbitron',sans-serif;}
         '<p>My journey started with Python scripts and grew into voice-enabled AI assistants, cross-platform apps and semantic file-search engines. I believe the best way to learn is to ship real things.</p>'+
         '<div class="tag-row"><span class="tag">Critical Thinker</span><span class="tag">AI Enthusiast</span><span class="tag">Fast Learner</span><span class="tag">Team Leader</span></div>',
       right:'<h3>Snapshot</h3>'+
-        '<div class="mini-stat-grid"><div class="mini-stat"><b>6+</b><span>Projects</span></div><div class="mini-stat"><b>2</b><span>Internships</span></div><div class="mini-stat"><b>14+</b><span>Tools</span></div><div class="mini-stat"><b>4</b><span>AI APIs</span></div></div>'+
+        '<div class="mini-stat-grid"><div class="mini-stat"><b>7+</b><span>Projects</span></div><div class="mini-stat"><b>2</b><span>Internships</span></div><div class="mini-stat"><b>14+</b><span>Tools</span></div><div class="mini-stat"><b>4</b><span>AI APIs</span></div></div>'+
         '<div class="mini-tl"><div class="mini-tl-item"><b>BCA · AVS College</b><span>2023–26 · Salem · CGPA 7.4</span></div><div class="mini-tl-item"><b>Looking for</b><span>Software / Web / Flutter roles — Chennai or Salem</span></div></div>'
     },
     { id:'projects', label:'Capabilities', angle:-30, heading:'Systems online',
       left:'<h3>Featured &amp; Web</h3>'+
+        '<div class="mini-proj"><span class="pcat">Security · Featured</span><div class="pname">NEXUS — Secure Phone-to-Laptop Link</div><p>Free, authenticated Android-to-Windows hub over a hotspot: QR + one-time-code + laptop-approval pairing, encrypted chat, large file transfer with SHA-256 checks, live laptop status, HTTPS with a private CA and a tamper-evident audit log.</p><div class="ptags"><span>Python</span><span>FastAPI</span><span>WebSockets</span><span>SQLite</span></div><a class="proj-link" href="https://github.com/Prem120606/Nexus-linker" target="_blank" rel="noopener">View on GitHub ↗</a></div>'+
         '<div class="mini-proj"><span class="pcat">AI · Featured</span><div class="pname">JARVIS — Iron Man AI Assistant</div><p>Voice-enabled desktop assistant with holographic HUD, Groq Whisper STT, LLaMA 3.1 memory, TF-IDF intent classification and an OpenCV + MediaPipe hologram engine.</p><div class="ptags"><span>Python</span><span>Flet</span><span>Groq API</span><span>OpenCV</span></div></div>'+
         '<div class="mini-proj"><span class="pcat">Web</span><div class="pname">SearchSphere</div><p>"Google Search for your computer" — real-time indexing, SQLite FTS5, OCR and a semantic intent-based search engine.</p><div class="ptags"><span>Next.js</span><span>TypeScript</span><span>SQLite FTS5</span></div></div>'+
         '<div class="mini-proj"><span class="pcat">AI</span><div class="pname">AI Career Guidance</div><p>Gemini-powered tool recommending personalized career paths from skills and interests.</p><div class="ptags"><span>Python</span><span>Gemini AI</span></div></div>',
@@ -619,6 +663,7 @@ h1,h2,h3,.mono{font-family:'Orbitron',sans-serif;}
   var titleEyebrow = document.getElementById('title-eyebrow');
   var titleHeading = document.getElementById('title-heading');
   var liveRegion = document.getElementById('live-region');
+  var titleBox = document.querySelector('.core-title');
   var hint = document.getElementById('hint');
   var cursorOrb = document.getElementById('cursor-orb');
   var cursorTrail = document.getElementById('cursor-trail');
@@ -662,6 +707,7 @@ h1,h2,h3,.mono{font-family:'Orbitron',sans-serif;}
     wingRight.innerHTML = sec.right;
     titleEyebrow.textContent = '0'+(newIdx+1)+' · '+sec.label;
     titleHeading.textContent = sec.heading;
+    if(isMobile && titleBox){ titleBox.classList.remove('swap'); void titleBox.offsetWidth; titleBox.classList.add('swap'); }
     document.body.setAttribute('data-theme', sec.id);
     updateProgress(newIdx);
     liveRegion.textContent = sec.label + ' section open';
@@ -675,13 +721,13 @@ h1,h2,h3,.mono{font-family:'Orbitron',sans-serif;}
   function closeCard(cb){
     wingLeft.classList.remove('open'); wingRight.classList.remove('open');
     phase = 'closing';
-    setTimeout(function(){ phase = 'closed'; cb && cb(); }, reduceMotion ? 0 : 380);
+    setTimeout(function(){ phase = 'closed'; cb && cb(); }, CLOSE_MS);
   }
 
   function rotateTo(newIdx, cb){
     phase = 'rotating'; idx = newIdx;
     applyRotation(idx, true);
-    setTimeout(function(){ cb && cb(); }, reduceMotion ? 0 : 1050);
+    setTimeout(function(){ cb && cb(); }, ROT_MS);
   }
 
   var locked = true; // stays locked until boot burst completes
@@ -703,7 +749,7 @@ h1,h2,h3,.mono{font-family:'Orbitron',sans-serif;}
     locked = true;
     var proceed = function(){
       phase = 'rotating'; idx = targetIdx; applyRotation(idx, true);
-      setTimeout(function(){ openCard(targetIdx); locked = false; }, reduceMotion?0:1050);
+      setTimeout(function(){ openCard(targetIdx); locked = false; }, ROT_MS);
     };
     if(phase === 'open'){ closeCard(proceed); } else { proceed(); }
   }
@@ -797,11 +843,17 @@ h1,h2,h3,.mono{font-family:'Orbitron',sans-serif;}
     }
   }, {passive:false});
 
-  var touchStartY = null;
-  document.body.addEventListener('touchstart', function(e){ touchStartY = e.touches[0].clientY; }, {passive:true});
-  document.body.addEventListener('touchmove', function(e){ e.preventDefault(); }, {passive:false});
+  var touchStartY = null, touchInPanel = false;
+  document.body.addEventListener('touchstart', function(e){
+    touchStartY = e.touches[0].clientY;
+    touchInPanel = !!(e.target.closest && e.target.closest('.wing'));
+  }, {passive:true});
+  document.body.addEventListener('touchmove', function(e){
+    if(!(e.target.closest && e.target.closest('.wing'))){ e.preventDefault(); }
+  }, {passive:false});
   document.body.addEventListener('touchend', function(e){
     if(touchStartY === null) return;
+    if(touchInPanel){ touchStartY = null; return; }
     var dy = touchStartY - e.changedTouches[0].clientY;
     touchStartY = null;
     if(Math.abs(dy) > 40){ step(dy > 0 ? 1 : -1); }
